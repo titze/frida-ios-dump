@@ -246,7 +246,7 @@ def create_dir(path):
 
 
 def open_target_app(device, name_or_bundleid):
-    print 'Start the target app {}'.format(name_or_bundleid)
+    
 
     pid = ''
     session = None
@@ -260,10 +260,14 @@ def open_target_app(device, name_or_bundleid):
 
     try:
         if not pid:
-            pid = device.spawn([bundle_identifier])
-            session = device.attach(pid)
-            device.resume(pid)
+            print 'App not started. Aborting.'
+            sys.exit(-1)
+            #Start the target app {}'.format(name_or_bundleid)
+            #pid = device.spawn([bundle_identifier])
+            #session = device.attach(pid)
+            #device.resume(pid)
         else:
+            print 'Attaching to target app {}'.format(name_or_bundleid)
             session = device.attach(pid)
     except Exception as e:
         print e
@@ -287,6 +291,7 @@ def start_dump(session, ipa_name):
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(description='frida-ios-dump (by AloneMonkey v2.0)')
     parser.add_argument('-l', '--list', dest='list_applications', action='store_true', help='List the installed apps')
+    parser.add_argument('-pn', '--packagenames', dest='list_packagenames', action='store_true', help='List the installed apps only as package names')
     parser.add_argument('-o', '--output', dest='output_ipa', help='Specify name of the decrypted IPA')
     parser.add_argument('target', nargs='?', help='Bundle identifier or display name of the target app')
     args = parser.parse_args()
@@ -299,9 +304,19 @@ if __name__ == '__main__':
         parser.print_help()
     elif args.list_applications:
         list_applications(device)
+    elif args.list_packagenames:
+        for application in get_applications(device):
+            print application.identifier
     else:
         name_or_bundleid = args.target
         output_ipa = args.output_ipa
+
+        if os.path.isfile('out/%s.ipa' % name_or_bundleid):
+            print('%s already exists.' % name_or_bundleid)
+            sys.exit(0)
+
+        os.system("./start_on_remote.sh %s" % name_or_bundleid)
+        os.system("sleep 2");
 
         try:
             ssh = paramiko.SSHClient()
@@ -311,7 +326,7 @@ if __name__ == '__main__':
             create_dir(PAYLOAD_PATH)
             (session, display_name, bundle_identifier) = open_target_app(device, name_or_bundleid)
             if output_ipa is None:
-                output_ipa = display_name
+                output_ipa = 'out/%s' % bundle_identifier
             output_ipa = re.sub('\.ipa$', '', output_ipa)
             if session:
                 start_dump(session, output_ipa)
@@ -326,10 +341,12 @@ if __name__ == '__main__':
             traceback.print_exc()
             exit_code = 1
 
+        os.system("./kill_apps_on_remote.sh")
     if ssh:
         ssh.close()
 
     if os.path.exists(PAYLOAD_PATH):
         shutil.rmtree(PAYLOAD_PATH)
+
 
     sys.exit(exit_code)
